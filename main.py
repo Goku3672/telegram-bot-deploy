@@ -217,13 +217,13 @@ async def main():
     app.add_handler(CommandHandler("gdrive", handle_gdrive))
     
     if 'RENDER' in os.environ:
-        from telegram.ext._application import Defaults
         await app.run_webhook(
-            listen="0.0.0.0",
-            port=int(os.getenv('PORT', 10000)),
-            webhook_url=os.getenv('WEBHOOK_URL'),
-            secret_token=os.getenv('WEBHOOK_SECRET', '')
-        )
+    listen="0.0.0.0",
+    port=int(os.getenv('PORT', 10000)),
+    webhook_url=os.getenv('WEBHOOK_URL'),
+    secret_token=os.getenv('WEBHOOK_SECRET', ''),
+    drop_pending_updates=True
+)
     else:
         await app.run_polling()
 
