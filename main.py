@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import asyncio
 import requests
@@ -12,21 +13,48 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# ========== CONFIGURATION ==========
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-SERVICE_ACCOUNT_JSON = json.loads(os.getenv('SERVICE_ACCOUNT_JSON'))
-TARGET_FOLDER_NAME = os.getenv('TARGET_FOLDER_NAME', 'botfiles')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Must be HTTPS!
-PORT = int(os.getenv('PORT', 10000))
+class Config:
+    def __init__(self):
+        self.BOT_TOKEN = os.getenv('BOT_TOKEN')
+        self.SERVICE_ACCOUNT_JSON = os.getenv('SERVICE_ACCOUNT_JSON')
+        self.TARGET_FOLDER_NAME = os.getenv('TARGET_FOLDER_NAME', 'botfiles')
+        self.WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+        self.PORT = int(os.getenv('PORT', 10000))
+        self.IS_RENDER = 'RENDER' in os.environ
+        
+        self.validate()
 
-# ========== GOOGLE DRIVE SETUP ==========
+    def validate(self):
+        if not self.BOT_TOKEN:
+            sys.exit("❌ Missing BOT_TOKEN environment variable")
+            
+        if not self.SERVICE_ACCOUNT_JSON:
+            sys.exit("❌ Missing SERVICE_ACCOUNT_JSON environment variable")
+            
+        try:
+            self.SERVICE_ACCOUNT_INFO = json.loads(self.SERVICE_ACCOUNT_JSON)
+        except json.JSONDecodeError:
+            sys.exit("❌ Invalid SERVICE_ACCOUNT_JSON: Not valid JSON")
+            
+        if self.IS_RENDER:
+            if not self.WEBHOOK_URL:
+                sys.exit("❌ WEBHOOK_URL is required on Render")
+            if not self.WEBHOOK_URL.startswith('https://'):
+                sys.exit("❌ WEBHOOK_URL must start with https://")
+
+# Initialize configuration
+try:
+    config = Config()
+except Exception as e:
+    sys.exit(f"❌ Configuration failed: {str(e)}")
+
+# Initialize Google Drive service
 creds = service_account.Credentials.from_service_account_info(
-    SERVICE_ACCOUNT_JSON,
+    config.SERVICE_ACCOUNT_INFO,
     scopes=["https://www.googleapis.com/auth/drive"]
 )
 drive_service = build("drive", "v3", credentials=creds)
 
-# ========== PROGRESS TRACKER ==========
 class UploadProgressTracker:
     def __init__(self, total_size, msg, file_name):
         self.start_time = time.time()
@@ -90,23 +118,17 @@ class UploadProgressTracker:
         uptime = timedelta(seconds=int(time.time() - psutil.boot_time()))
         return cpu, ram, disk, uptime
 
-# ========== CORE FUNCTIONALITY ==========
 def get_proper_filename(url, response):
     """Determine the correct filename with extension"""
-    # 1. Check Content-Disposition header first
     content_disposition = response.headers.get('Content-Disposition', '')
     if 'filename=' in content_disposition:
         filename = content_disposition.split('filename=')[1].split(';')[0].strip('"\'')
         return filename
     
-    # 2. Get base name from URL
     url_name = url.split('/')[-1].split('?')[0]
-    
-    # 3. Check Content-Type for extension
     content_type = response.headers.get('Content-Type', '').split(';')[0].strip()
     extension = guess_extension(content_type) or ''
     
-    # 4. Special cases for common types
     if not extension:
         if 'pdf' in content_type.lower():
             extension = '.pdf'
@@ -117,7 +139,6 @@ def get_proper_filename(url, response):
         elif 'zip' in content_type.lower():
             extension = '.zip'
     
-    # 5. Combine name and extension
     if '.' in url_name:
         return url_name
     return f"{url_name}{extension}"
@@ -175,7 +196,7 @@ async def handle_gdrive(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             last_update = now
 
         await msg.edit_text("📤 Preparing upload to Google Drive...")
-        folder_id = get_shared_folder_id(TARGET_FOLDER_NAME)
+        folder_id = get_shared_folder_id(config.TARGET_FOLDER_NAME)
         file_size = os.path.getsize(temp_file)
         tracker = UploadProgressTracker(file_size, msg, file_name)
 
@@ -221,35 +242,37 @@ def get_shared_folder_id(name):
         raise Exception(f"Folder '{name}' not found or not shared with service account.")
     return items[0]["id"]
 
-# ========== APPLICATION SETUP ==========
 async def run_bot():
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(config.BOT_TOKEN).build()
     application.add_handler(CommandHandler("gdrive", handle_gdrive))
     
-    if 'RENDER' in os.environ:
-        if not WEBHOOK_URL.startswith('https://'):
-            raise ValueError("WEBHOOK_URL must be HTTPS (e.g., https://your-service.onrender.com)")
-            
+    if config.IS_RENDER:
+        print("🚀 Starting in webhook mode...")
         await application.initialize()
         await application.start()
         
-        await application.updater.start_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=BOT_TOKEN,
-            webhook_url=WEBHOOK_URL,
-            drop_pending_updates=True
-        )
-        print(f"✅ Bot running in webhook mode at {WEBHOOK_URL}")
-        
-        # Keep the application running
-        while True:
-            await asyncio.sleep(3600)
+        try:
+            await application.updater.start_webhook(
+                listen="0.0.0.0",
+                port=config.PORT,
+                url_path=config.BOT_TOKEN,
+                webhook_url=config.WEBHOOK_URL,
+                drop_pending_updates=True
+            )
+            print(f"✅ Webhook server running at {config.WEBHOOK_URL}")
+            
+            # Keep the application running
+            while True:
+                await asyncio.sleep(3600)
+                
+        except Exception as e:
+            print(f"❌ Webhook setup failed: {e}")
+            await application.stop()
+            raise
     else:
+        print("🚀 Starting in polling mode...")
         await application.run_polling()
-        print("✅ Bot running in polling mode")
 
-# ========== ENTRY POINT ==========
 if __name__ == "__main__":
     try:
         asyncio.run(run_bot())
