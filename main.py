@@ -7,7 +7,7 @@ import json
 from datetime import timedelta
 from mimetypes import guess_extension
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -213,19 +213,18 @@ def get_shared_folder_id(name):
 
 async def main():
     print("Bot starting...")
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("gdrive", handle_gdrive))
+    application = Application.builder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("gdrive", handle_gdrive))
     
     if 'RENDER' in os.environ:
-        await app.run_webhook(
-    listen="0.0.0.0",
-    port=int(os.getenv('PORT', 10000)),
-    webhook_url=os.getenv('WEBHOOK_URL'),
-    secret_token=os.getenv('WEBHOOK_SECRET', ''),
-    drop_pending_updates=True
-)
+        await application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.getenv('PORT', 10000)),
+            webhook_url=os.getenv('WEBHOOK_URL'),
+            drop_pending_updates=True
+        )
     else:
-        await app.run_polling()
+        await application.run_polling()
 
 if __name__ == "__main__":
     import nest_asyncio
