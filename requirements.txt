@@ -1,7 +1,6 @@
-python-telegram-bot==20.3
+python-telegram-bot[webhooks]==20.3
 google-api-python-client==2.104.0
 google-auth-httplib2==0.1.1
 google-auth-oauthlib==1.1.0
 requests==2.31.0
 psutil==5.9.6
-nest-asyncio==1.5.8
