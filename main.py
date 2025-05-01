@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import asyncio
 import requests
@@ -12,49 +11,38 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from flask import Flask, request  # Flask for web server
+from threading import Thread  # For running Flask in background
 
-class Config:
-    def __init__(self):
-        self.BOT_TOKEN = os.getenv('BOT_TOKEN')
-        self.SERVICE_ACCOUNT_JSON = os.getenv('SERVICE_ACCOUNT_JSON')
-        self.TARGET_FOLDER_NAME = os.getenv('TARGET_FOLDER_NAME', 'botfiles')
-        self.WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-        self.PORT = int(os.getenv('PORT', 10000))
-        self.IS_RENDER = 'RENDER' in os.environ
-        
-        self.validate()
+# ======================
+# FLASK WEB SERVER (Required for Render)
+# ======================
+app = Flask(__name__)
 
-    def validate(self):
-        if not self.BOT_TOKEN:
-            sys.exit("❌ Missing BOT_TOKEN environment variable")
-            
-        if not self.SERVICE_ACCOUNT_JSON:
-            sys.exit("❌ Missing SERVICE_ACCOUNT_JSON environment variable")
-            
-        try:
-            self.SERVICE_ACCOUNT_INFO = json.loads(self.SERVICE_ACCOUNT_JSON)
-        except json.JSONDecodeError:
-            sys.exit("❌ Invalid SERVICE_ACCOUNT_JSON: Not valid JSON")
-            
-        if self.IS_RENDER:
-            if not self.WEBHOOK_URL:
-                sys.exit("❌ WEBHOOK_URL is required on Render")
-            if not self.WEBHOOK_URL.startswith('https://'):
-                sys.exit("❌ WEBHOOK_URL must start with https://")
+@app.route('/')
+def health_check():
+    """Endpoint for Render health checks"""
+    return "Bot is running", 200
 
-# Initialize configuration
-try:
-    config = Config()
-except Exception as e:
-    sys.exit(f"❌ Configuration failed: {str(e)}")
+# ======================
+# CONFIGURATION
+# ======================
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+SERVICE_ACCOUNT_JSON = json.loads(os.getenv('SERVICE_ACCOUNT_JSON'))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g., https://your-service-name.onrender.com
+PORT = int(os.getenv('PORT', 10000))
+TARGET_FOLDER_NAME = os.getenv('TARGET_FOLDER_NAME', 'botfiles')
 
-# Initialize Google Drive service
+# Initialize Google Drive
 creds = service_account.Credentials.from_service_account_info(
-    config.SERVICE_ACCOUNT_INFO,
+    json.loads(SERVICE_ACCOUNT_JSON),
     scopes=["https://www.googleapis.com/auth/drive"]
 )
 drive_service = build("drive", "v3", credentials=creds)
 
+# ======================
+# UPLOAD PROGRESS TRACKER (Your original class)
+# ======================
 class UploadProgressTracker:
     def __init__(self, total_size, msg, file_name):
         self.start_time = time.time()
@@ -118,30 +106,26 @@ class UploadProgressTracker:
         uptime = timedelta(seconds=int(time.time() - psutil.boot_time()))
         return cpu, ram, disk, uptime
 
+# ======================
+# BOT COMMAND HANDLERS (Your original functionality)
+# ======================
 def get_proper_filename(url, response):
-    """Determine the correct filename with extension"""
+    """Extract filename from URL or headers"""
     content_disposition = response.headers.get('Content-Disposition', '')
     if 'filename=' in content_disposition:
-        filename = content_disposition.split('filename=')[1].split(';')[0].strip('"\'')
-        return filename
-    
+        return content_disposition.split('filename=')[1].split(';')[0].strip('"\'')
+
     url_name = url.split('/')[-1].split('?')[0]
     content_type = response.headers.get('Content-Type', '').split(';')[0].strip()
     extension = guess_extension(content_type) or ''
-    
+
     if not extension:
-        if 'pdf' in content_type.lower():
-            extension = '.pdf'
-        elif 'jpeg' in content_type.lower() or 'jpg' in content_type.lower():
-            extension = '.jpg'
-        elif 'png' in content_type.lower():
-            extension = '.png'
-        elif 'zip' in content_type.lower():
-            extension = '.zip'
-    
-    if '.' in url_name:
-        return url_name
-    return f"{url_name}{extension}"
+        if 'pdf' in content_type.lower(): extension = '.pdf'
+        elif 'jpeg' in content_type.lower() or 'jpg' in content_type.lower(): extension = '.jpg'
+        elif 'png' in content_type.lower(): extension = '.png'
+        elif 'zip' in content_type.lower(): extension = '.zip'
+
+    return f"{url_name}{extension}" if not '.' in url_name else url_name
 
 async def handle_gdrive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -157,6 +141,7 @@ async def handle_gdrive(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_name = get_proper_filename(url, response)
             temp_file = f"temp_{file_name}"
             
+            # Download with progress updates
             total = int(response.headers.get("content-length", 0))
             downloaded = 0
             start_time = time.time()
@@ -168,35 +153,34 @@ async def handle_gdrive(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f.write(chunk)
                         downloaded += len(chunk)
 
+                        # Update progress every 2 seconds
                         now = time.time()
                         if now - last_update >= 2:
                             percent = min((downloaded / total) * 100, 100)
                             speed = downloaded / (now - start_time + 0.1)
                             remaining = max(total - downloaded, 0)
                             eta = remaining / speed if speed > 0 else 0
+                            
+                            # Prepare status message
                             bar = "█" * int(percent // 5) + "░" * (20 - int(percent // 5))
-                            bar = f"{bar} {percent:.1f}%"
                             cpu, ram, disk, uptime = UploadProgressTracker._get_system_stats(None)
-
-                            text = (
-                                f"🔄 Downloading: {file_name}\n"
-                                f"{bar}\n"
+                            status_text = (
+                                f"🔄 Downloading: {file_name}\n{bar} {percent:.1f}%\n"
                                 f"📦 Processed: {UploadProgressTracker._format_size(None, downloaded)}/{UploadProgressTracker._format_size(None, total)}\n"
-                                f"🚀 Speed: {UploadProgressTracker._format_size(None, speed)}/s | ETA: {UploadProgressTracker._format_time(None, eta)}\n"
-                                f"⏱️ Elapsed: {UploadProgressTracker._format_time(None, now - start_time)}\n\n"
-                                f"💻 System\n"
-                                f"🖥️ CPU: {cpu}% | 💾 Free: {disk:.1f}GB\n"
+                                f"🚀 Speed: {UploadProgressTracker._format_size(None, speed)}/s\n"
+                                f"⏱️ ETA: {UploadProgressTracker._format_time(None, eta)}\n\n"
+                                f"💻 CPU: {cpu}% | 💾 Free: {disk:.1f}GB\n"
                                 f"🧠 RAM: {ram}% | ⏱️ Uptime: {str(uptime).split('.')[0]}"
                             )
-
                             try:
-                                await msg.edit_text(text)
+                                await msg.edit_text(status_text)
                             except:
                                 pass
                             last_update = now
 
+        # Upload to Google Drive
         await msg.edit_text("📤 Preparing upload to Google Drive...")
-        folder_id = get_shared_folder_id(config.TARGET_FOLDER_NAME)
+        folder_id = get_shared_folder_id(TARGET_FOLDER_NAME)
         file_size = os.path.getsize(temp_file)
         tracker = UploadProgressTracker(file_size, msg, file_name)
 
@@ -232,6 +216,7 @@ async def handle_gdrive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"❌ Error: {str(e)}")
 
 def get_shared_folder_id(name):
+    """Find folder ID in Google Drive"""
     results = drive_service.files().list(
         q=f"name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
         spaces='drive',
@@ -242,40 +227,47 @@ def get_shared_folder_id(name):
         raise Exception(f"Folder '{name}' not found or not shared with service account.")
     return items[0]["id"]
 
-async def run_bot():
-    application = Application.builder().token(config.BOT_TOKEN).build()
+# ======================
+# BOT STARTUP (Modified for Render compatibility)
+# ======================
+async def main():
+    # 1. Create bot application
+    application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("gdrive", handle_gdrive))
-    
-    if config.IS_RENDER:
-        print("🚀 Starting in webhook mode...")
+
+    if 'RENDER' in os.environ:  # Production on Render
+        print("🚀 Starting in WEBHOOK mode")
+        
+        # 2. Start Flask web server in background
+        Thread(target=lambda: app.run(
+            host='0.0.0.0',
+            port=PORT,
+            debug=False,
+            use_reloader=False
+        )).start()
+
+        # 3. Set up Telegram webhook
         await application.initialize()
         await application.start()
-        
-        try:
-            await application.updater.start_webhook(
-                listen="0.0.0.0",
-                port=config.PORT,
-                url_path=config.BOT_TOKEN,
-                webhook_url=config.WEBHOOK_URL,
-                drop_pending_updates=True
-            )
-            print(f"✅ Webhook server running at {config.WEBHOOK_URL}")
-            
-            # Keep the application running
-            while True:
-                await asyncio.sleep(3600)
-                
-        except Exception as e:
-            print(f"❌ Webhook setup failed: {e}")
-            await application.stop()
-            raise
-    else:
-        print("🚀 Starting in polling mode...")
+        await application.updater.start_webhook(
+            listen='localhost',  # Internal port
+            port=PORT,
+            url_path=BOT_TOKEN,
+            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
+            drop_pending_updates=True
+        )
+        print(f"✅ Webhook ready at {WEBHOOK_URL}")
+
+        # 4. Keep the bot running
+        while True:
+            await asyncio.sleep(3600)
+    else:  # Local development
+        print("🚀 Starting in POLLING mode")
         await application.run_polling()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(run_bot())
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("🛑 Bot stopped by user")
     except Exception as e:
