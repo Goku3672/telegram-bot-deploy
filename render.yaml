@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: telegram-file-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 7982271214:AAEu_F_9EPyOxuWAsE6umLT8EiZUuVy8KFU
+      - key: SERVICE_ACCOUNT_JSON
+        value: |
+          {
+            "type": "service_account",
+            "project_id": "telegramfilebot-458407",
+            "private_key_id": "12ce89ac25259c7bededf7d7e90f9fcf7c1e88ae",
+            "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC4EZdukCKv7lGd\ntrhn92hGXSWtsM2cfu2/CRoN3QCCbpn+pp/CulPspTPXObclw2yn4BlSoEil1x1N\n7pLjBPdGF5z7EUk+YM0Aa2zBezPENlunYzeHS2KZttzDlyR5qo19bK5iFWiLlxEz\n75k6RoUAs36A3N/V1OVKscFAEarwKr2DmOjToT7TRgtapk+NhdJLumZvAZacfomR\nI9oK/haj+Hvx97KrxQASQNYiNnGNwTBFL1hntvTffWp4JLQg2QWKW5qIqpOtZFR/\na34SJ4znx9314wwinst2kCJGTJEGWs8VsojCOBLRsqj8SOcv0u6+EU8R60FMnMVm\nLMHob8DNAgMBAAECggEABOb3tEAI+Hay/EMP8rmQsKJi8kGy8X/M56lU+mO1fi52\nvKTl54WsXgar/zJVjx8ptJKKl3GBiyR+mTh+d3wxSg/aGbKvvhujDLzlBYXOjrjO\n5JdHH5E8U/Ezkc7476JBSJhIJasXIMlEx0Vn5zjWanrH+/kbSgKJ78e/qJaVNEu3\nZQDgEJQtSZp/mmuKsrrKmpA/lIQBiViKUiZQAw8ucdgLcMT7CgiFZ5W17R9SgJlO\nYCZN2cFuFZ4TcMidGnn8ViPcEmkoUo595brc4PqfhA1/pPv2e08H/NSVBxbmsGA6\n8XmAtoFqpH4SN4L0hDPJEAYuHotqY6gJ9qj/VTYLuQKBgQD/NJmMqYKuSbYNKqko\ndnsp/SLd9UBM3T5I2k/gphm9xDxuKHEGyZclGrIkWMJlLvZvUw9KrLcTWp8TVQxj\nMvMEiyypRhmpzjNQkzPa6f/izzZ2ISceARHblNXmuC+HUwvfIH+fqaH259vb7C3v\nr0WooZbt1UT0iNhatgvjFSINqQKBgQC4pEubKny/ChnhkwfnQtL4xtWBJvvjIvaG\n1+gtv+WOfYQnxmietKQ6HaNTDOvx4izXyK1FsEBgxch3QQH3LbYR/fgRq8rgA3h5\niBn4OWBKvztRcSEpbnC4gn3pOUZ+DfZQbJ7YIUgxgv3+BrrbdxJjBVqqdy2QSIz4\nXcdtYeJohQKBgEW+JDBSqsnijwPuIqhSKLqC2SJ7QYU/+SODtcyY1/QKStF379uA\n//M95m0UbJumR+aIdmdb5/Q8EbkAxw/c/pjBSAVCiQTkuxVMBSHQTQO4yRNjYANN\nG4o8lHAm6aY7xcTGZtpFS2PkXSsu0ibsaUb6UfrRC7UgKLAxi/IU9mdxAoGALS0t\nvopXuVpcWL/jyCamfe4QYShLqxhr3zRGf6MbJJD7W8wE3wftwrZrtq9Lr4QaWrWk\nB5AHQGZEFUGXnIXXrXFJV/GDkunmeT3etMg9EizV86hNZ9i4xbxP2FeGMuNxp93b\nw5/pDQwy3wuAfqAUpJuzwk+km0/VBhPT7qRrhA0CgYA+f8kYZEyZGFtjADwalsN9\n+J+IbUcZsFJBQ/LgCHwO2BxaVDtlJD/XTduqcG+VWN0EMg8WVA3k/ZQX0Rgsxd+/\nM13D0Wy7gWbxL5U4vOd6dd5U+fQCPLZNUGvj8XW0+F07DcTORNbCqd5yOSELKta6\n2wu3uMhQtvdXd1BBXlYJyA==\n-----END PRIVATE KEY-----\n",
+            "client_email": "telegram-bot-access@telegramfilebot-458407.iam.gserviceaccount.com",
+            "client_id": "108564500680658005611",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/telegram-bot-access%40telegramfilebot-458407.iam.gserviceaccount.com",
+            "universe_domain": "googleapis.com"
+          }
+      - key: WEBHOOK_URL
+        value: https://your-service-name.onrender.com
+      - key: PORT
+        value: 10000
+      - key: RENDER
+        value: true
